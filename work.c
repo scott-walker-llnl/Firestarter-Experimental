@@ -272,8 +272,8 @@ void *thread(void *threaddata)
 						fscanf(config, "%u\n", &partitions);	
 						fscanf(config, "%lf", &maxfreq);
 						freq &= 0xFFFFUL;
-						fprintf(stderr, "Using Config: %lu, %u, %lf, %u, %lf, %lx, %c, %u, %u\n",
-						iteration_cap, sec, watts, usec, uwatts, freq, turbo, duty, partitions);
+						fprintf(stderr, "Using Config: %lu, %u, %lf, %u, %lf, %lx, %c, %u, %u, %lf\n",
+						iteration_cap, sec, watts, usec, uwatts, freq, turbo, duty, partitions, maxfreq);
 						fclose(config);
 					}
 					unsigned long num_iters = 0;
@@ -286,8 +286,12 @@ void *thread(void *threaddata)
 							}
 							((threaddata_t *) threaddata)->iter = 0;
 					}
+					int res;
+					uint64_t perfstat, log, new_log, inst_ret, inst_ret_a;
+					uint64_t low, high, low_a, high_a;
 					uint64_t energy, energy_a, pp0, pp0_a;
 					uint64_t aperf, aperf_a, mperf, mperf_a, perf;
+					uint64_t mperf_tot, aperf_tot, mperf_tot_a, aperf_tot_a;
 					struct timeval before;
 					unsigned affinity = ((threaddata_t *) threaddata)->cpu_id;
 					unsigned thread = 0;
@@ -344,15 +348,15 @@ void *thread(void *threaddata)
 						syscall(WRITE, PERF_CTL, &perf);
 						syscall(READ, ENERGY_STATUS, &energy);
 						syscall(READ, ENERGY_PP0, &pp0);
-						syscall(READ, APERF, &aperf);
-						syscall(READ, MPERF, &mperf);
+						syscall(READ, APERF, &aperf_tot);
+						syscall(READ, MPERF, &mperf_tot);
 #endif
 #ifndef MCK
 						write_msr_by_coord(0, affinity, thread, PERF_CTL, perf);
 						read_msr_by_coord(0, affinity, thread, ENERGY_STATUS, &energy);
 						read_msr_by_coord(0, affinity, thread, ENERGY_PP0, &pp0);
-						read_msr_by_coord(0, affnity, thread, APERF, &aperf);
-						read_msr_by_coord(0, affnity, thread, MPERF, &mperf);
+						read_msr_by_coord(0, affnity, thread, APERF, &aperf_tot);
+						read_msr_by_coord(0, affnity, thread, MPERF, &mperf_tot);
 #endif
 						uint64_t power_unit = unit & 0xF;
 						double pu = 1.0 / (0x1 << power_unit);
@@ -469,11 +473,6 @@ void *thread(void *threaddata)
 					for (num_iters = 0; num_iters < iteration_cap; num_iters++) 
 					{
 
-						uint64_t perfstat, log, inst_ret, aperf;
-						uint64_t mperf, aperf_a, mperf_a;
-						uint64_t inst_ret_a, new_log, low, high;
-						uint64_t low_a, high_a;
-						int res;
 						((threaddata_t *) threaddata)->iter++;
 						if (!(((threaddata_t *) threaddata)->iter % (duty / 4)))
 						{
@@ -567,6 +566,16 @@ void *thread(void *threaddata)
 #endif
 							__asm__ __volatile__("rdtsc" : "=a" (low_a), "=d" (high_a));
 							
+							unsigned long before = (high << 32) | low;
+							unsigned long after = (high_a << 32) | low_a;
+							struct msrdata *ptr = &(((threaddata_t *) threaddata)->msrdata[((threaddata_t *) threaddata)->iter - 1]);
+							ptr->tsc = after - before;
+							ptr->aperf = aperf_a - aperf;
+							ptr->mperf = mperf_a - mperf;
+							ptr->retired = inst_ret_a - inst_ret;
+							ptr->log = new_log ^ log; // has log changed?
+							ptr->pmc0 = 0xFFFF & perfstat;
+							ptr->pmc2 = res;
 							continue;
 						}
 					//while(1)
@@ -671,6 +680,7 @@ void *thread(void *threaddata)
 						struct msrdata *ptr = &(((threaddata_t *) threaddata)->msrdata[((threaddata_t *) threaddata)->iter - 1]);
 						ptr->tsc = after - before;
 						ptr->aperf = aperf_a - aperf;
+						ptr->mperf = mperf_a - mperf;
 						ptr->retired = inst_ret_a - inst_ret;
 						ptr->log = new_log ^ log; // has log changed?
 						ptr->pmc0 = 0xFFFF & perfstat;
@@ -726,18 +736,18 @@ void *thread(void *threaddata)
 					{ 
 						gettimeofday(&after, NULL);
 						printf("energy unit is: %lf\n", energy_unit);
-		#ifdef MCK
+#ifdef MCK
 						syscall(READ, ENERGY_STATUS, &energy_a);
 						syscall(READ, ENERGY_PP0, &pp0_a);
-						syscall(READ, APERF, &aperf_a);
-						syscall(READ, MPERF, &mperf_a);
-		#endif
-		#ifndef MCK
+						syscall(READ, APERF, &aperf_tot_a);
+						syscall(READ, MPERF, &mperf_tot_a);
+#endif
+#ifndef MCK
 						read_msr_by_coord(0, affinity, thread, ENERGY_STATUS, &energy_a);
 						read_msr_by_coord(0, affinity, thread, ENERGY_PP0, &pp0_a);
-						read_msr_by_coord(0, affinity, thread, APERF, &aperf_a);
-						read_msr_by_coord(0, affinity, thread, MPERF, &mperf_a);
-		#endif
+						read_msr_by_coord(0, affinity, thread, APERF, &aperf_tot_a);
+						read_msr_by_coord(0, affinity, thread, MPERF, &mperf_tot_a);
+#endif
 						if (energy_a - energy < 0)
 						{
 							delta_joules = energy_a + MAX_JOULES - energy;
