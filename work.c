@@ -53,7 +53,6 @@
 #define PERF_CTL 0x199
 #define PERF_STAT 0x198
 #define TURBO_LIMIT 0x1AD
-#define PERF_LOG 0x690
 #define FIXED_CTR0 0x309
 #define THERM_STAT 0x1B1
 #define THERM_INT 0x1B2
@@ -74,6 +73,8 @@
 #define MAX_JOULES (0xFFFFFFFFUL / 65536UL)
 #define WATTS 90.0 
 #define SECONDS 1
+
+int BARRIER_GLOBAL = 0;
 
 int intload();
 
@@ -287,19 +288,13 @@ void *thread(void *threaddata)
 							((threaddata_t *) threaddata)->iter = 0;
 					}
 					int res;
-					uint64_t perfstat, log, new_log, inst_ret, inst_ret_a;
+					uint64_t perfstat, inst_ret, inst_ret_a;
 					uint64_t low, high, low_a, high_a;
 					uint64_t energy, energy_a, pp0, pp0_a;
 					uint64_t aperf, aperf_a, mperf, mperf_a, perf;
 					uint64_t mperf_tot, aperf_tot, mperf_tot_a, aperf_tot_a;
 					struct timeval before;
 					unsigned affinity = ((threaddata_t *) threaddata)->cpu_id;
-					unsigned thread = 0;
-					if (affinity > 3)
-					{
-						affinity -= 4;
-						thread = 1;
-					}
 					uint64_t unit = 0;
 					uint64_t turbo_ratio_limit = 0;
 					double energy_unit = 0.0;
@@ -315,6 +310,7 @@ void *thread(void *threaddata)
 					energy_unit = 1.0 / (0x1 << ((unit & 0x1F00) >> 8));
 
 					//struct timeval profa, profb;
+					fprintf(stderr, "%u initializing registers\n", affinity);
 					if (affinity == 0)
 					{
 						//gettimeofday(&profb, NULL);
@@ -446,59 +442,16 @@ void *thread(void *threaddata)
 					gettimeofday(&psamp_b, NULL);
 										
 					// barrier to keep threads in sync
+					fprintf(stderr, "%u made it to barrier\n", affinity);
 					barrier(affinity, ((threaddata_t *)threaddata));
-/*
-					switch (affinity)
-					{
-						case 0:
-							BARRIER_GLOBAL0++;
-							while(BARRIER_GLOBAL0 != (BARRIER_GLOBAL1 | BARRIER_GLOBAL2 | BARRIER_GLOBAL3)) {}
-							break;
-						case 1:
-							BARRIER_GLOBAL1++;
-							while(BARRIER_GLOBAL1 != (BARRIER_GLOBAL0 | BARRIER_GLOBAL2 | BARRIER_GLOBAL3)) {}
-							break;
-						case 2:
-							BARRIER_GLOBAL2++;
-							while(BARRIER_GLOBAL2 != (BARRIER_GLOBAL0 | BARRIER_GLOBAL1 | BARRIER_GLOBAL3)) {}
-							break;
-						case 3:
-							BARRIER_GLOBAL3++;
-							while(BARRIER_GLOBAL3 != (BARRIER_GLOBAL0 | BARRIER_GLOBAL1 | BARRIER_GLOBAL2)) {}
-							break;
-					}
-
-*/
-					
+										
 					for (num_iters = 0; num_iters < iteration_cap; num_iters++) 
 					{
-
 						((threaddata_t *) threaddata)->iter++;
 						if (!(((threaddata_t *) threaddata)->iter % (duty / 4)))
 						{
 							// barrier to keep threads in sync
 							barrier(affinity, ((threaddata_t *)threaddata));
-/*
-							switch (affinity)
-							{
-								case 0:
-									BARRIER_GLOBAL0++;
-									while(BARRIER_GLOBAL0 != (BARRIER_GLOBAL1 | BARRIER_GLOBAL2 | BARRIER_GLOBAL3)) {}
-									break;
-								case 1:
-									BARRIER_GLOBAL1++;
-									while(BARRIER_GLOBAL1 != (BARRIER_GLOBAL0 | BARRIER_GLOBAL2 | BARRIER_GLOBAL3)) {}
-									break;
-								case 2:
-									BARRIER_GLOBAL2++;
-									while(BARRIER_GLOBAL2 != (BARRIER_GLOBAL0 | BARRIER_GLOBAL1 | BARRIER_GLOBAL3)) {}
-									break;
-								case 3:
-									BARRIER_GLOBAL3++;
-									while(BARRIER_GLOBAL3 != (BARRIER_GLOBAL0 | BARRIER_GLOBAL1 | BARRIER_GLOBAL2)) {}
-									break;
-							}
-*/
 							uint64_t enr;
 #ifdef MCK
 							syscall(READ, ENERGY_STATUS, &enr);
@@ -532,17 +485,11 @@ void *thread(void *threaddata)
 						if (workload == 1)
 						{
 #ifdef MCK
-							syscall(READ, PERF_LOG, &log);
-							log = log & ~0xE76F0000;
-							syscall(WRITE, PERF_LOG, &log);
 							syscall(READ, FIXED_CTR0, &inst_ret);
 							syscall(READ, APERF, &aperf);
 							syscall(READ, MPERF, &mperf);
 #endif
 #ifndef MCK
-							read_msr_by_coord(0, affinity, thread, PERF_LOG, &log);
-							log = log & ~0xE76F0000;
-							write_msr_by_coord(0, affinity, thread, PERF_LOG, log);
 							read_msr_by_coord(0, affinity, thread, FIXED_CTR0, &inst_ret);
 							read_msr_by_coord(0, affinity, thread, APERF, &aperf);
 							read_msr_by_coord(0, affinity, thread, MPERF, &mperf);
@@ -555,14 +502,12 @@ void *thread(void *threaddata)
 							syscall(READ, APERF, &aperf_a);
 							syscall(READ, MPERF, &mperf_a);
 							syscall(READ, FIXED_CTR0, &inst_ret_a);
-							syscall(READ, PERF_LOG, &new_log);
 #endif
 #ifndef MCK
 							read_msr_by_coord(0, affinity, thread, PERF_STAT, &perfstat);
 							read_msr_by_coord(0, affinity, thread, APERF, &aperf_a);
 							read_msr_by_coord(0, affinity, thread, MPERF, &mperf_a);
 							read_msr_by_coord(0, affinity, thread, FIXED_CTR0, &inst_ret_a);
-							read_msr_by_corod(0, affintiy, thread, PERF_LOG, &new_log);
 #endif
 							__asm__ __volatile__("rdtsc" : "=a" (low_a), "=d" (high_a));
 							
@@ -573,7 +518,7 @@ void *thread(void *threaddata)
 							ptr->aperf = aperf_a - aperf;
 							ptr->mperf = mperf_a - mperf;
 							ptr->retired = inst_ret_a - inst_ret;
-							ptr->log = new_log ^ log; // has log changed?
+							ptr->log = 0;
 							ptr->pmc0 = 0xFFFF & perfstat;
 							ptr->pmc2 = res;
 							continue;
@@ -588,17 +533,11 @@ void *thread(void *threaddata)
 						SCOREP_USER_REGION_BY_NAME_BEGIN("HIGH", SCOREP_USER_REGION_TYPE_COMMON);
 						#endif
 #ifdef MCK
-						syscall(READ, PERF_LOG, &log);
-						log = log & ~0xE76F0000;
-						syscall(WRITE, PERF_LOG, &log);
 						syscall(READ, FIXED_CTR0, &inst_ret);
 						syscall(READ, APERF, &aperf);
 						syscall(READ, MPERF, &mperf);
 #endif
 #ifndef MCK
-						read_msr_by_coord(0, affinity, thread, PERF_LOG, &log);
-						log = log & ~0xE76F0000;
-						write_msr_by_coord(0, affinity, thread, PERF_LOG, log);
 						read_msr_by_coord(0, affinity, thread, FIXED_CTR0, &inst_ret);
 						read_msr_by_coord(0, affinity, thread, APERF, &aperf);
 						read_msr_by_coord(0, affinity, thread, MPERF, &mperf);
@@ -664,14 +603,12 @@ void *thread(void *threaddata)
 						syscall(READ, APERF, &aperf_a);
 						syscall(READ, MPERF, &mperf_a);
 						syscall(READ, FIXED_CTR0, &inst_ret_a);
-						syscall(READ, PERF_LOG, &new_log);
 #endif
 #ifndef MCK
 						read_msr_by_coord(0, affinity, thread, PERF_STAT, &perfstat);
 						read_msr_by_coord(0, affinity, thread, APERF, &aperf_a);
 						read_msr_by_coord(0, affinity, thread, MPERF, &mperf_a);
 						read_msr_by_coord(0, affinity, thread, FIXED_CTR0, &inst_ret_a);
-						read_msr_by_corod(0, affintiy, thread, PERF_LOG, &new_log);
 #endif
 						__asm__ __volatile__("rdtsc" : "=a" (low_a), "=d" (high_a));
 						((threaddata_t *) threaddata)->msrdata[((threaddata_t *) threaddata)->iter - 1].pmc0 = perfstat & 0xFFFF;
@@ -681,8 +618,8 @@ void *thread(void *threaddata)
 						ptr->tsc = after - before;
 						ptr->aperf = aperf_a - aperf;
 						ptr->mperf = mperf_a - mperf;
+						ptr->log = 0;
 						ptr->retired = inst_ret_a - inst_ret;
-						ptr->log = new_log ^ log; // has log changed?
 						ptr->pmc0 = 0xFFFF & perfstat;
 						ptr->pmc2 = res; // dummy value to prevent optimization
 						/*
@@ -690,7 +627,6 @@ void *thread(void *threaddata)
 						((threaddata_t *) threaddata)->msrdata[((threaddata_t *) threaddata)->iter - 1].aperf = aperf_a - aperf;
 						((threaddata_t *) threaddata)->msrdata[((threaddata_t *) threaddata)->iter - 1].mperf = mperf_a - mperf;
 						((threaddata_t *) threaddata)->msrdata[((threaddata_t *) threaddata)->iter - 1].retired = inst_ret_a - inst_ret;
-						((threaddata_t *) threaddata)->msrdata[((threaddata_t *) threaddata)->iter - 1].log = new_log ^ log;
 						((threaddata_t *) threaddata)->msrdata[((threaddata_t *) threaddata)->iter - 1].pmc0 = perfstat & 0xFFFF;
 						((threaddata_t *) threaddata)->msrdata[((threaddata_t *) threaddata)->iter - 1].pmc2 = res;
 						*/
