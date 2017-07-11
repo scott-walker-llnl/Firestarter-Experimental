@@ -78,6 +78,75 @@ int BARRIER_GLOBAL = 0;
 
 int intload();
 
+void change_power_limit(uint64_t unit, double watts, double uwatts, unsigned sec, unsigned usec)
+{
+	uint64_t power_unit = unit & 0xF;
+	double pu = 1.0 / (0x1 << power_unit);
+	//fprintf(stderr, "power unit: %lx\n", power_unit);
+	uint64_t seconds_unit = (unit >> 16) & 0x1F;
+	double su = 1.0 / (0x1 << seconds_unit);
+	//fprintf(stderr, "seconds unit: %lx\n", seconds_unit);
+	uint64_t power = (unsigned long) (watts / pu);
+	uint64_t upower = (unsigned long) (uwatts / pu);
+	uint64_t seconds;
+	uint64_t timeval_y = 0, timeval_x = 0;
+	double logremainder = 0;
+	if (sec > 40)
+	{
+		fprintf(stderr, "ERROR: seconds too high\n");
+		//sec = 40;
+	}
+	if (usec > 127)
+	{
+		fprintf(stderr, "ERROR: usec too high\n");
+		usec = 127;
+	}
+	timeval_y = (uint64_t) log2(sec / su);
+	//fprintf(stderr, "time unit is %lf, field 1 is %lx\n", su, timeval_y);
+	// store the mantissa of the log2
+	logremainder = (double) log2(sec / su) - (double) timeval_y;
+	timeval_x = 0;
+	// based on the mantissa, we can choose the appropriate multiplier
+	if (logremainder > 0.15 && logremainder <= 0.45)
+	{
+			timeval_x = 1;
+	}
+	else if (logremainder > 0.45 && logremainder <= 0.7)
+	{
+			timeval_x = 2;
+	}
+	else if (logremainder > 0.7)
+	{
+			timeval_x = 3;
+	}
+	// store the bits in the Intel specified format
+	seconds = (uint64_t) (timeval_y | (timeval_x << 5));
+	uint64_t rapl = power | (seconds << 17);
+	uint64_t urapl = upower | (usec << 17);
+	urapl |= (1LL << 15) | (1LL << 16);
+	urapl <<= 32;
+	rapl |= urapl;
+
+	if (power & 0xFFFFFFFFFFFF8000)
+	{
+		fprintf(stderr, "ERROR: power\n");
+	}
+	if (seconds & 0xFFFFFFFFFFFFFF80)
+	{
+		fprintf(stderr, "ERROR: seconds\n");
+	}
+
+	rapl |= (1LL << 15) | (1LL << 16);
+	//fprintf(stderr, "RAPL is: %lx\n", rapl);
+#ifdef MCK
+	syscall(WRITE, POWER_LIMIT, &rapl);
+#endif
+#ifndef MCK
+	write_msr_by_coord(0, affinity, thread, POWER_LIMIT, &rapl);
+#endif
+
+}
+
 void barrier(unsigned affinity, threaddata_t *threaddata)
 {
 	int sibling = -1;
@@ -353,70 +422,7 @@ void *thread(void *threaddata)
 						read_msr_by_coord(0, affnity, thread, APERF, &aperf_tot);
 						read_msr_by_coord(0, affnity, thread, MPERF, &mperf_tot);
 #endif
-						uint64_t power_unit = unit & 0xF;
-						double pu = 1.0 / (0x1 << power_unit);
-						fprintf(stderr, "power unit: %lx\n", power_unit);
-						uint64_t seconds_unit = (unit >> 16) & 0x1F;
-						double su = 1.0 / (0x1 << seconds_unit);
-						fprintf(stderr, "seconds unit: %lx\n", seconds_unit);
-						uint64_t power = (unsigned long) (watts / pu);
-						uint64_t upower = (unsigned long) (uwatts / pu);
-						uint64_t seconds;
-						uint64_t timeval_y = 0, timeval_x = 0;
-						double logremainder = 0;
-						if (sec > 40)
-						{
-							fprintf(stderr, "ERROR: seconds too high\n");
-							//sec = 40;
-						}
-						if (usec > 127)
-						{
-							fprintf(stderr, "ERROR: usec too high\n");
-							usec = 127;
-						}
-						timeval_y = (uint64_t) log2(sec / su);
-						fprintf(stderr, "time unit is %lf, field 1 is %lx\n", su, timeval_y);
-						// store the mantissa of the log2
-						logremainder = (double) log2(sec / su) - (double) timeval_y;
-						timeval_x = 0;
-						// based on the mantissa, we can choose the appropriate multiplier
-						if (logremainder > 0.15 && logremainder <= 0.45)
-						{
-								timeval_x = 1;
-						}
-						else if (logremainder > 0.45 && logremainder <= 0.7)
-						{
-								timeval_x = 2;
-						}
-						else if (logremainder > 0.7)
-						{
-								timeval_x = 3;
-						}
-						// store the bits in the Intel specified format
-						seconds = (uint64_t) (timeval_y | (timeval_x << 5));
-						uint64_t rapl = power | (seconds << 17);
-						uint64_t urapl = upower | (usec << 17);
-						urapl |= (1LL << 15) | (1LL << 16);
-						urapl <<= 32;
-						rapl |= urapl;
-
-						if (power & 0xFFFFFFFFFFFF8000)
-						{
-							fprintf(stderr, "ERROR: power\n");
-						}
-						if (seconds & 0xFFFFFFFFFFFFFF80)
-						{
-							fprintf(stderr, "ERROR: seconds\n");
-						}
-
-						rapl |= (1LL << 15) | (1LL << 16);
-						fprintf(stderr, "RAPL is: %lx\n", rapl);
-#ifdef MCK
-						syscall(WRITE, POWER_LIMIT, &rapl);
-#endif
-#ifndef MCK
-						write_msr_by_coord(0, affinity, thread, POWER_LIMIT, &rapl);
-#endif
+						change_power_limit(unit, watts, uwatts, sec, usec);
 					}
 					else
 					{
@@ -431,6 +437,8 @@ void *thread(void *threaddata)
 					// start the state at one since itr starts at 1
 					short state = 1;
 					uint64_t last = 0;
+					double fuzzpow = 60;
+					unsigned fuzztime = 4;
 #ifdef MCK
 					syscall(READ, ENERGY_STATUS, &last);
 #endif
@@ -446,10 +454,21 @@ void *thread(void *threaddata)
 					for (num_iters = 0; num_iters < iteration_cap; num_iters++) 
 					{
 						((threaddata_t *) threaddata)->iter++;
-						if (!(((threaddata_t *) threaddata)->iter % (duty / 4)))
+						if (!(((threaddata_t *) threaddata)->iter % (duty / 10)))
 						{
 							// barrier to keep threads in sync
 							barrier(affinity, ((threaddata_t *)threaddata));
+							// change the power setting
+							if (fuzztime == 4)
+							{
+								fuzztime = 10;
+								change_power_limit(unit, fuzzpow, uwatts, fuzztime, usec);
+							}
+							else
+							{
+								fuzztime = 4;
+								change_power_limit(unit, fuzzpow, uwatts, fuzztime, usec);
+							}
 							uint64_t enr;
 #ifdef MCK
 							syscall(READ, ENERGY_STATUS, &enr);
@@ -480,7 +499,8 @@ void *thread(void *threaddata)
 								state = 0;
 							}
 						}
-						if (workload == 1)
+						//if (workload == 1)
+						if (0)
 						{
 #ifdef MCK
 							syscall(READ, FIXED_CTR0, &inst_ret);
