@@ -310,7 +310,6 @@ void *thread(void *threaddata)
 					energy_unit = 1.0 / (0x1 << ((unit & 0x1F00) >> 8));
 
 					//struct timeval profa, profb;
-					fprintf(stderr, "%u initializing registers\n", affinity);
 					if (affinity == 0)
 					{
 						//gettimeofday(&profb, NULL);
@@ -442,7 +441,6 @@ void *thread(void *threaddata)
 					gettimeofday(&psamp_b, NULL);
 										
 					// barrier to keep threads in sync
-					fprintf(stderr, "%u made it to barrier\n", affinity);
 					barrier(affinity, ((threaddata_t *)threaddata));
 										
 					for (num_iters = 0; num_iters < iteration_cap; num_iters++) 
