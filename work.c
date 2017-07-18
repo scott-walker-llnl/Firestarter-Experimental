@@ -20,6 +20,8 @@
  *****************************************************************************/
 
 #define MCK 1
+#define NUM_FS_WORKLOADS 6
+#define NUM_SLEEP_WORKLOADS 2
 
 #define _GNU_SOURCE
 
@@ -469,14 +471,17 @@ void *thread(void *threaddata)
 						// 75% duty
 						if (!(((threaddata_t *) threaddata)->iter % (duty / partitions)))
 						{
-							if (state < (partitions - 1))
+							state++;
+							if (state <= NUM_FS_WORKLOADS)
 							{
-								state++;
 								workload = 0;
+							}
+							else if ((state - NUM_FS_WORKLOADS) <= NUM_SLEEP_WORKLOADS)
+							{
+								workload = 1;
 							}
 							else
 							{
-								workload = 1;
 								state = 0;
 							}
 						}
@@ -519,6 +524,7 @@ void *thread(void *threaddata)
 							ptr->log = 0;
 							ptr->pmc0 = 0xFFFF & perfstat;
 							ptr->pmc2 = res;
+							ptr->pmc3 = workload;
 							continue;
 						}
 					//while(1)
@@ -620,6 +626,7 @@ void *thread(void *threaddata)
 						ptr->retired = inst_ret_a - inst_ret;
 						ptr->pmc0 = 0xFFFF & perfstat;
 						ptr->pmc2 = res; // dummy value to prevent optimization
+						ptr->pmc3 = workload;
 						/*
 						((threaddata_t *) threaddata)->msrdata[((threaddata_t *) threaddata)->iter - 1].tsc = after - before;
 						((threaddata_t *) threaddata)->msrdata[((threaddata_t *) threaddata)->iter - 1].aperf = aperf_a - aperf;
@@ -744,10 +751,10 @@ void *thread(void *threaddata)
 					char fname[64];
 					snprintf(fname, 64, "core%d.msrdat", affinity);
 					FILE * out = fopen(fname, "w");
-					fprintf(out, "tsc\tretired\taperf\tmperf\tfreq\tlog\tstat\n");
+					fprintf(out, "tsc\tretired\taperf\tmperf\tfreq\tlog\tstat\tworkload\n");
 					for (num_iters = 0; num_iters < iteration_cap; num_iters++)
 					{
-					fprintf(out, "%lu\t%lu\t%lu\t%lu\t%.1lf\t%lx\t%lx\n",
+					fprintf(out, "%lu\t%lu\t%lu\t%lu\t%.1lf\t%lx\t%lx\t%lu\n",
 						((threaddata_t *) threaddata)->msrdata[num_iters].tsc,
 						((threaddata_t *) threaddata)->msrdata[num_iters].retired,
 						((threaddata_t *) threaddata)->msrdata[num_iters].aperf,
@@ -756,7 +763,8 @@ void *thread(void *threaddata)
 						(double) (((threaddata_t *) threaddata)->msrdata[num_iters].mperf) *
 						maxfreq,
 						((threaddata_t *) threaddata)->msrdata[num_iters].log,
-						((threaddata_t *) threaddata)->msrdata[num_iters].pmc0);
+						((threaddata_t *) threaddata)->msrdata[num_iters].pmc0,
+						((threaddata_t *) threaddata)->msrdata[num_iters].pmc3);
 						//((threaddata_t *) threaddata)->msrdata[num_iters].pmc1);
 					}
 					fflush(out);
