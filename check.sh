@@ -1,3 +1,13 @@
+echo -e -n -n "5.0GHz\t"
+grep -n "5\.0" *.msrdat | wc -l
+echo -e -n -n "4.9GHz\t"
+grep -n "4\.9" *.msrdat | wc -l
+echo -e -n -n "4.8GHz\t"
+grep -n "4\.8" *.msrdat | wc -l
+echo -e -n -n "4.7GHz\t"
+grep -n "4\.7" *.msrdat | wc -l
+echo -e -n -n "4.6GHz\t"
+grep -n "4\.6" *.msrdat | wc -l
 echo -e -n -n "4.5GHz\t"
 grep -n "4\.5" *.msrdat | wc -l
 echo -e -n "4.4GHz\t"
@@ -70,3 +80,7 @@ echo -e -n "1.1GHz\t"
 grep -n "1\.1" *.msrdat | wc -l
 echo -e -n "1.0GHz\t"
 grep -n "1\.0" *.msrdat | wc -l
+echo -e -n "0.9GHz\t"
+grep -n "0\.9" *.msrdat | wc -l
+echo -e -n "0.8GHz\t"
+grep -n "0\.8" *.msrdat | wc -l
