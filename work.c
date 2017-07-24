@@ -19,7 +19,6 @@
  * Contact: daniel.hackenberg@tu-dresden.de
  *****************************************************************************/
 
-#define MCK 1
 #define NUM_FS_WORKLOADS 6
 #define NUM_SLEEP_WORKLOADS 2
 

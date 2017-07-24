@@ -18,7 +18,6 @@
  *
  * Contact: daniel.hackenberg@tu-dresden.de
  *****************************************************************************/
-#define MCK 1
 
 #include "work.h"
 

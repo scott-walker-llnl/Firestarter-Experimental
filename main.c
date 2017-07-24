@@ -19,8 +19,6 @@
  * Contact: daniel.hackenberg@tu-dresden.de
  *****************************************************************************/
 
-#define MCK 1
-
 #if (defined(linux) || defined(__linux__))
 #define _GNU_SOURCE
 #ifdef AFFINITY
