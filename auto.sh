@@ -1,18 +1,19 @@
 EXP="exp1"
-NITER=200000
+NITER=20000
 TURBO="t"
 PSTATE="0x2d00"
 DUTY=10000
 PART=4
 MAXFREQ="4.2" # should be set to max non-turbo frequency
 FSPATH="~/Firestarter-Experimental/FIRESTARTER" # should point to firestarter executable
+TDP=205
 
-START=70
-END=140 #set to tdp
+START=$TDP * 0.7
+END=$TDP #set to tdp
 LPOW=60
 LSEC=8
 SEC=25
-POW=105
+POW=$TDP
 CTR=1
 
 #for ((POW=60; POW <= 105; POW += 5));
