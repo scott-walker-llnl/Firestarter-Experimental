@@ -21,26 +21,6 @@
 
 #include "work.h"
 
-#ifndef MCK
-#include "msr_core.h"
-#include "msr_counters.h"
-#include "msr_clocks.h"
-#endif
-
-#define READ 312
-#define WRITE 313
-//#define BUFFSIZE 980000000
-//#define BUFFSIZE 450000000
-#define BUFFSIZE 420000000
-#define MSR_MISC 0x1A0
-#define PERF_STAT 0x198
-#define PERF_CTL 0x199
-#define ENERGY_STATUS 0x611
-#define MAX_JOULES (0xFFFFFFFFUL / 65536UL)
-#define PERF_LOG 0x690
-#define FIXED_CTR 0x309
-
-
 /**
  * assembler implementation of processor and memory stress test
  * ISA: FMA

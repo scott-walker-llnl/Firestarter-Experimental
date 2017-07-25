@@ -21,19 +21,6 @@
 
 #include "work.h"
 
-#ifndef MCK
-#include "msr_core.h"
-#include "msr_counters.h"
-#include "msr_clocks.h"
-#endif
-
-#define READ 312
-#define WRITE 313
-#define MSR_MISC 0x1A0
-#define PERF_CTL 0x199
-#define ENERGY_STATUS 0x611
-#define MAX_JOULES (0xFFFFFFFFUL / 65536UL)
-
 /**
  * assembler implementation of processor and memory stress test
  * ISA: AVX

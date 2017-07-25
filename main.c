@@ -47,6 +47,8 @@
 #include "gpu.h"
 #endif
 
+#include "msr_core.h"
+
 /*
  * used for --bind option
  */

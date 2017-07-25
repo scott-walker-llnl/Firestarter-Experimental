@@ -74,13 +74,13 @@ x86.o: x86.c cpu.h
 	${LINUX_CC} ${OPT_STD} ${LINUX_C_FLAGS} -c x86.c
 
 main.o: main.c work.h cpu.h
-	${LINUX_CC} ${OPT_STD} ${LINUX_C_FLAGS} -c main.c
+	${LINUX_CC} ${OPT_STD} ${LINUX_C_FLAGS} -c main.c -L/home/walker8/libmsr/install/lib -lmsr -I/home/walker8/libmsr/install/include
 
 init_functions.o: init_functions.c work.h cpu.h
 	${LINUX_CC} ${OPT_STD} ${LINUX_C_FLAGS} -c init_functions.c
 
 work.o: work.c work.h cpu.h
-	${LINUX_CC} ${OPT_STD} ${LINUX_C_FLAGS} -c work.c
+	${LINUX_CC} ${OPT_STD} ${LINUX_C_FLAGS} -c work.c -L/home/walker8/libmsr/install/lib -lmsr -I/home/walker8/libmsr/install/include
 
 watchdog.o: watchdog.h
 	${LINUX_CC} ${OPT_STD} ${LINUX_C_FLAGS} -c watchdog.c -lrt -lm
@@ -122,7 +122,7 @@ fma4_functions_win64.o: fma4_functions.c
 	${WIN64_CC} ${OPT_ASM} ${WIN64_C_FLAGS} -mfma4 -mavx  -c fma4_functions.c -o fma4_functions_win64.o
 
 fma_functions.o: fma_functions.c
-	${LINUX_CC} ${OPT_ASM} ${LINUX_C_FLAGS} -mfma -mavx  -c fma_functions.c -I/home/walker8/libmsr/install/include 
+	${LINUX_CC} ${OPT_ASM} ${LINUX_C_FLAGS} -mfma -mavx  -c fma_functions.c
 
 fma_functions_win64.o: fma_functions.c
 	${WIN64_CC} ${OPT_ASM} ${WIN64_C_FLAGS} -mfma -mavx  -c fma_functions.c -o fma_functions_win64.o
