@@ -148,6 +148,7 @@ void *thread(void *threaddata)
     unsigned int tmp = 0;
     unsigned long long old = THREAD_STOP;
 	unsigned affinity = ((threaddata_t *) threaddata)->cpu_id;
+	unsigned barrier_affinity = ((threaddata_t *) threaddata)->cpu_id;
 
     /* wait untill master thread starts initialization */
     while(global_data->thread_comm[id] != THREAD_INIT);
@@ -461,7 +462,7 @@ void *thread(void *threaddata)
 					gettimeofday(&psamp_b, NULL);
 										
 					// barrier to keep threads in sync
-					barrier(affinity, ((threaddata_t *)threaddata));
+					barrier(barrier_affinity, ((threaddata_t *)threaddata));
 										
 					for (num_iters = 0; num_iters < iteration_cap; num_iters++) 
 					{
@@ -469,7 +470,7 @@ void *thread(void *threaddata)
 						if (!(((threaddata_t *) threaddata)->iter % (duty / 4)))
 						{
 							// barrier to keep threads in sync
-							barrier(affinity, ((threaddata_t *)threaddata));
+							barrier(barrier_affinity, ((threaddata_t *)threaddata));
 							uint64_t enr;
 #ifdef MCK
 							syscall(READ, ENERGY_STATUS, &enr);
