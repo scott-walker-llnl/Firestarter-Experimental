@@ -80,6 +80,68 @@ int BARRIER_GLOBAL = 0;
 
 int intload();
 
+void set_rapl(unsigned sec, unsigned usec, unsigned watts, unsigned uwatts, double pu, double su, unsigned affinity, unsigned socket)
+{
+	fprintf(stderr, "changed limit\n");
+	uint64_t power = (unsigned long) (watts / pu);
+	uint64_t upower = (unsigned long) (uwatts / pu);
+	uint64_t seconds;
+
+	uint64_t timeval_y = 0, timeval_x = 0;
+	double logremainder = 0;
+	if (sec > 40)
+	{
+		fprintf(stderr, "ERROR: seconds too high\n");
+		//sec = 40;
+	}
+	if (usec > 127)
+	{
+		fprintf(stderr, "ERROR: usec too high\n");
+		usec = 127;
+	}
+	timeval_y = (uint64_t) log2(sec / su);
+	// store the mantissa of the log2
+	logremainder = (double) log2(sec / su) - (double) timeval_y;
+	timeval_x = 0;
+	// based on the mantissa, we can choose the appropriate multiplier
+	if (logremainder > 0.15 && logremainder <= 0.45)
+	{
+			timeval_x = 1;
+	}
+	else if (logremainder > 0.45 && logremainder <= 0.7)
+	{
+			timeval_x = 2;
+	}
+	else if (logremainder > 0.7)
+	{
+			timeval_x = 3;
+	}
+	// store the bits in the Intel specified format
+	seconds = (uint64_t) (timeval_y | (timeval_x << 5));
+	uint64_t rapl = power | (seconds << 17);
+	uint64_t urapl = upower | (usec << 17);
+	urapl |= (1LL << 15) | (1LL << 16);
+	urapl <<= 32;
+	rapl |= urapl;
+
+	if (power & 0xFFFFFFFFFFFF8000)
+	{
+		fprintf(stderr, "ERROR: power\n");
+	}
+	if (seconds & 0xFFFFFFFFFFFFFF80)
+	{
+		fprintf(stderr, "ERROR: seconds\n");
+	}
+
+	rapl |= (1LL << 15) | (1LL << 16);
+#ifdef MCK
+	syscall(WRITE, POWER_LIMIT, &rapl);
+#endif
+#ifndef MCK
+	write_msr_by_coord(socket, affinity, thread, POWER_LIMIT, &rapl);
+#endif
+}
+
 void barrier(unsigned affinity, threaddata_t *threaddata)
 {
 	int sibling = -1;
@@ -145,6 +207,7 @@ void *thread(void *threaddata)
     threaddata_t *mydata = (threaddata_t *)threaddata;
     unsigned int tmp = 0;
     unsigned long long old = THREAD_STOP;
+	unsigned affinity = ((threaddata_t *) threaddata)->cpu_id;
 
     /* wait untill master thread starts initialization */
     while(global_data->thread_comm[id] != THREAD_INIT);
@@ -258,6 +321,7 @@ void *thread(void *threaddata)
 					unsigned duty = 8800;
 					unsigned partitions = 4;
 					char turbo = 't';
+					unsigned socket, cores_per_socket;
 					if (config == NULL)
 					{
 							fprintf(stderr, "Error opening config file, using defaults\n");
@@ -273,12 +337,24 @@ void *thread(void *threaddata)
 						fscanf(config, "%c\n", &turbo);	
 						fscanf(config, "%u\n", &duty);	
 						fscanf(config, "%u\n", &partitions);	
-						fscanf(config, "%lf", &maxfreq);
+						fscanf(config, "%lf\n", &maxfreq);
+						fscanf(config, "%u", &cores_per_socket);
 						freq &= 0xFFFFUL;
 						fprintf(stderr, "Using Config: %lu, %u, %lf, %u, %lf, %lx, %c, %u, %u, %lf\n",
 						iteration_cap, sec, watts, usec, uwatts, freq, turbo, duty, partitions, maxfreq);
 						fclose(config);
 					}
+					
+					if (affinity > cores_per_socket)
+					{
+						socket = 1;
+						affinity = affinity - cores_per_socket;
+					}
+					else
+					{
+						socket = 0;
+					}
+
 					unsigned long num_iters = 0;
 					if (((threaddata_t *) threaddata)->msrdata == NULL)
 					{
@@ -295,8 +371,9 @@ void *thread(void *threaddata)
 					uint64_t energy, energy_a, pp0, pp0_a;
 					uint64_t aperf, aperf_a, mperf, mperf_a, perf;
 					uint64_t mperf_tot, aperf_tot, mperf_tot_a, aperf_tot_a;
+					uint64_t power_unit, seconds_unit;
+					double pu, su;
 					struct timeval before;
-					unsigned affinity = ((threaddata_t *) threaddata)->cpu_id;
 					uint64_t unit = 0;
 					uint64_t turbo_ratio_limit = 0;
 					double energy_unit = 0.0;
@@ -306,8 +383,8 @@ void *thread(void *threaddata)
 					syscall(WRITE, FIXED_CTR_CTRL, &ctrl);
 #endif
 #ifndef MCK
-					read_msr_by_coord(0, affinity, thread, ENERGY_UNIT, &unit);
-					write_msr_by_coord(0, affinity, thread, FIXED_CTR_CTRL, ctrl);
+					read_msr_by_coord(socket, affinity, thread, ENERGY_UNIT, &unit);
+					write_msr_by_coord(socket, affinity, thread, FIXED_CTR_CTRL, ctrl);
 #endif
 					energy_unit = 1.0 / (0x1 << ((unit & 0x1F00) >> 8));
 
@@ -320,7 +397,7 @@ void *thread(void *threaddata)
 						syscall(READ, PERF_CTL, &old_perf);
 #endif
 #ifndef MCK
-						read_msr_by_coord(0, affinity, thread, PERF_CTL, &old_perf);
+						read_msr_by_coord(socket, affinity, thread, PERF_CTL, &old_perf);
 #endif
 						//disable turbo
 						//perf = perf | 0x100000000UL;
@@ -349,76 +426,20 @@ void *thread(void *threaddata)
 						syscall(READ, MPERF, &mperf_tot);
 #endif
 #ifndef MCK
-						write_msr_by_coord(0, affinity, thread, PERF_CTL, perf);
-						read_msr_by_coord(0, affinity, thread, ENERGY_STATUS, &energy);
-						read_msr_by_coord(0, affinity, thread, ENERGY_PP0, &pp0);
-						read_msr_by_coord(0, affnity, thread, APERF, &aperf_tot);
-						read_msr_by_coord(0, affnity, thread, MPERF, &mperf_tot);
+						write_msr_by_coord(socket, affinity, thread, PERF_CTL, perf);
+						read_msr_by_coord(socket, affinity, thread, ENERGY_STATUS, &energy);
+						read_msr_by_coord(socket, affinity, thread, ENERGY_PP0, &pp0);
+						read_msr_by_coord(socket, affnity, thread, APERF, &aperf_tot);
+						read_msr_by_coord(socket, affnity, thread, MPERF, &mperf_tot);
 #endif
-						uint64_t power_unit = unit & 0xF;
-						double pu = 1.0 / (0x1 << power_unit);
+						power_unit = unit & 0xF;
+						pu = 1.0 / (0x1 << power_unit);
 						fprintf(stderr, "power unit: %lx\n", power_unit);
-						uint64_t seconds_unit = (unit >> 16) & 0x1F;
-						double su = 1.0 / (0x1 << seconds_unit);
-						fprintf(stderr, "seconds unit: %lx\n", seconds_unit);
-						uint64_t power = (unsigned long) (watts / pu);
-						uint64_t upower = (unsigned long) (uwatts / pu);
-						uint64_t seconds;
-						uint64_t timeval_y = 0, timeval_x = 0;
-						double logremainder = 0;
-						if (sec > 40)
-						{
-							fprintf(stderr, "ERROR: seconds too high\n");
-							//sec = 40;
-						}
-						if (usec > 127)
-						{
-							fprintf(stderr, "ERROR: usec too high\n");
-							usec = 127;
-						}
-						timeval_y = (uint64_t) log2(sec / su);
-						fprintf(stderr, "time unit is %lf, field 1 is %lx\n", su, timeval_y);
-						// store the mantissa of the log2
-						logremainder = (double) log2(sec / su) - (double) timeval_y;
-						timeval_x = 0;
-						// based on the mantissa, we can choose the appropriate multiplier
-						if (logremainder > 0.15 && logremainder <= 0.45)
-						{
-								timeval_x = 1;
-						}
-						else if (logremainder > 0.45 && logremainder <= 0.7)
-						{
-								timeval_x = 2;
-						}
-						else if (logremainder > 0.7)
-						{
-								timeval_x = 3;
-						}
-						// store the bits in the Intel specified format
-						seconds = (uint64_t) (timeval_y | (timeval_x << 5));
-						uint64_t rapl = power | (seconds << 17);
-						uint64_t urapl = upower | (usec << 17);
-						urapl |= (1LL << 15) | (1LL << 16);
-						urapl <<= 32;
-						rapl |= urapl;
+						seconds_unit = (unit >> 16) & 0x1F;
+						su = 1.0 / (0x1 << seconds_unit);
 
-						if (power & 0xFFFFFFFFFFFF8000)
-						{
-							fprintf(stderr, "ERROR: power\n");
-						}
-						if (seconds & 0xFFFFFFFFFFFFFF80)
-						{
-							fprintf(stderr, "ERROR: seconds\n");
-						}
-
-						rapl |= (1LL << 15) | (1LL << 16);
-						fprintf(stderr, "RAPL is: %lx\n", rapl);
-#ifdef MCK
-						syscall(WRITE, POWER_LIMIT, &rapl);
-#endif
-#ifndef MCK
-						write_msr_by_coord(0, affinity, thread, POWER_LIMIT, &rapl);
-#endif
+						//set_rapl(sec, usec, watts, uwatts, pu, su);
+						set_rapl(8, 25, 95, 105, pu, su, affinity, socket);
 					}
 					else
 					{
@@ -431,13 +452,13 @@ void *thread(void *threaddata)
 					double *pow_dat = (double *) calloc(1024, sizeof(double));
 					struct timeval psamp_b, psamp_a;
 					// start the state at one since itr starts at 1
-					short state = 1;
+					short state = 0;
 					uint64_t last = 0;
 #ifdef MCK
 					syscall(READ, ENERGY_STATUS, &last);
 #endif
 #ifndef MCK
-					read_msr_by_coord(0, affinity, thread, ENERGY_STATUS, &last);
+					read_msr_by_coord(socket, affinity, thread, ENERGY_STATUS, &last);
 #endif
 
 					gettimeofday(&psamp_b, NULL);
@@ -457,79 +478,36 @@ void *thread(void *threaddata)
 							syscall(READ, ENERGY_STATUS, &enr);
 #endif
 #ifndef MCK
-							read_msr_by_coord(0, affinity, thread, ENERGY_STATUS, &enr);
+							read_msr_by_coord(socket, affinity, thread, ENERGY_STATUS, &enr);
 #endif
 							gettimeofday(&psamp_a, NULL);
 							double t = (psamp_a.tv_sec - psamp_b.tv_sec) + (psamp_a.tv_usec - psamp_b.tv_usec) / 1000000.0;
 							pow_dat[enr_samp_counter] = ((enr - last) * energy_unit) / t;
-
-							//fprintf(stderr, "tdiff %lf, pow %lf\n", t, pow_dat[enr_samp_counter]);
 							enr_samp_counter++;
 							last = enr;
 							psamp_b = psamp_a;
 						}
-						// 75% duty
-						if (!(((threaddata_t *) threaddata)->iter % (duty / partitions)))
+						if (!(((threaddata_t *) threaddata)->iter % 18000))
 						{
-							state++;
-							if (state <= NUM_FS_WORKLOADS)
+							if (state == 0)
 							{
-								workload = 0;
-							}
-							else if ((state - NUM_FS_WORKLOADS) <= NUM_SLEEP_WORKLOADS)
-							{
-								workload = 1;
+								// set pow
+								if (affinity == 0)
+								{
+									set_rapl(8, 25, 95, 105, pu, su, affinity, socket);
+								}
+								state = 1;
 							}
 							else
 							{
+								// set pow
+								if (affinity == 0)
+								{
+									set_rapl(8, 25, 60, 105, pu, su, affinity, socket);
+								}
 								state = 0;
 							}
 						}
-						if (workload == 1)
-						{
-#ifdef MCK
-							syscall(READ, FIXED_CTR0, &inst_ret);
-							syscall(READ, APERF, &aperf);
-							syscall(READ, MPERF, &mperf);
-#endif
-#ifndef MCK
-							read_msr_by_coord(0, affinity, thread, FIXED_CTR0, &inst_ret);
-							read_msr_by_coord(0, affinity, thread, APERF, &aperf);
-							read_msr_by_coord(0, affinity, thread, MPERF, &mperf);
-#endif
-							__asm__ __volatile__("rdtsc" : "=a" (low), "=d" (high));
-							//usleep(220);
-							res = intload();
-#ifdef MCK
-							syscall(READ, PERF_STAT, &perfstat);
-							syscall(READ, APERF, &aperf_a);
-							syscall(READ, MPERF, &mperf_a);
-							syscall(READ, FIXED_CTR0, &inst_ret_a);
-#endif
-#ifndef MCK
-							read_msr_by_coord(0, affinity, thread, PERF_STAT, &perfstat);
-							read_msr_by_coord(0, affinity, thread, APERF, &aperf_a);
-							read_msr_by_coord(0, affinity, thread, MPERF, &mperf_a);
-							read_msr_by_coord(0, affinity, thread, FIXED_CTR0, &inst_ret_a);
-#endif
-							__asm__ __volatile__("rdtsc" : "=a" (low_a), "=d" (high_a));
-							
-							unsigned long before = (high << 32) | low;
-							unsigned long after = (high_a << 32) | low_a;
-							struct msrdata *ptr = &(((threaddata_t *) threaddata)->msrdata[((threaddata_t *) threaddata)->iter - 1]);
-							ptr->tsc = after - before;
-							ptr->aperf = aperf_a - aperf;
-							ptr->mperf = mperf_a - mperf;
-							ptr->retired = inst_ret_a - inst_ret;
-							ptr->log = 0;
-							ptr->pmc0 = 0xFFFF & perfstat;
-							ptr->pmc2 = res;
-							ptr->pmc3 = workload;
-							continue;
-						}
-					//while(1)
-			//printf("starting iteration %lu\n", num_iters);
-						/* call high load function */
 						#ifdef ENABLE_VTRACING
 						VT_USER_START("HIGH_LOAD_FUNC");
 						#endif
@@ -542,9 +520,9 @@ void *thread(void *threaddata)
 						syscall(READ, MPERF, &mperf);
 #endif
 #ifndef MCK
-						read_msr_by_coord(0, affinity, thread, FIXED_CTR0, &inst_ret);
-						read_msr_by_coord(0, affinity, thread, APERF, &aperf);
-						read_msr_by_coord(0, affinity, thread, MPERF, &mperf);
+						read_msr_by_coord(socket, affinity, thread, FIXED_CTR0, &inst_ret);
+						read_msr_by_coord(socket, affinity, thread, APERF, &aperf);
+						read_msr_by_coord(socket, affinity, thread, MPERF, &mperf);
 #endif
 						__asm__ __volatile__("rdtsc" : "=a" (low), "=d" (high));
 						res = 0x12345;
@@ -609,10 +587,10 @@ void *thread(void *threaddata)
 						syscall(READ, FIXED_CTR0, &inst_ret_a);
 #endif
 #ifndef MCK
-						read_msr_by_coord(0, affinity, thread, PERF_STAT, &perfstat);
-						read_msr_by_coord(0, affinity, thread, APERF, &aperf_a);
-						read_msr_by_coord(0, affinity, thread, MPERF, &mperf_a);
-						read_msr_by_coord(0, affinity, thread, FIXED_CTR0, &inst_ret_a);
+						read_msr_by_coord(socket, affinity, thread, PERF_STAT, &perfstat);
+						read_msr_by_coord(socket, affinity, thread, APERF, &aperf_a);
+						read_msr_by_coord(socket, affinity, thread, MPERF, &mperf_a);
+						read_msr_by_coord(socket, affinity, thread, FIXED_CTR0, &inst_ret_a);
 #endif
 						__asm__ __volatile__("rdtsc" : "=a" (low_a), "=d" (high_a));
 						((threaddata_t *) threaddata)->msrdata[((threaddata_t *) threaddata)->iter - 1].pmc0 = perfstat & 0xFFFF;
@@ -684,10 +662,10 @@ void *thread(void *threaddata)
 						syscall(READ, MPERF, &mperf_tot_a);
 #endif
 #ifndef MCK
-						read_msr_by_coord(0, affinity, thread, ENERGY_STATUS, &energy_a);
-						read_msr_by_coord(0, affinity, thread, ENERGY_PP0, &pp0_a);
-						read_msr_by_coord(0, affinity, thread, APERF, &aperf_tot_a);
-						read_msr_by_coord(0, affinity, thread, MPERF, &mperf_tot_a);
+						read_msr_by_coord(socket, affinity, thread, ENERGY_STATUS, &energy_a);
+						read_msr_by_coord(socket, affinity, thread, ENERGY_PP0, &pp0_a);
+						read_msr_by_coord(socket, affinity, thread, APERF, &aperf_tot_a);
+						read_msr_by_coord(socket, affinity, thread, MPERF, &mperf_tot_a);
 #endif
 						if (energy_a - energy < 0)
 						{
@@ -714,10 +692,10 @@ void *thread(void *threaddata)
 						syscall(READ, THERM_CORE, &core_therm);
 #endif
 #ifndef MCK
-						read_msr_by_coord(0, affinity, thread, TURBO_LIMIT, &turbo_ratio_limit);
-						read_msr_by_coord(0, affinity, thread, THERM_STAT, &therm_stat);
-						read_msr_by_coord(0, affinity, thread, THERM_INT, &therm_int);
-						read_msr_by_coord(0, affinity, thread, THERM_CORE, &core_therm);
+						read_msr_by_coord(socket, affinity, thread, TURBO_LIMIT, &turbo_ratio_limit);
+						read_msr_by_coord(socket, affinity, thread, THERM_STAT, &therm_stat);
+						read_msr_by_coord(socket, affinity, thread, THERM_INT, &therm_int);
+						read_msr_by_coord(socket, affinity, thread, THERM_CORE, &core_therm);
 #endif
 						double time = (after.tv_sec - before.tv_sec) + (after.tv_usec - before.tv_usec) / 1000000.0;
 						printf("TIME: %lf\n", time);
