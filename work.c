@@ -55,7 +55,9 @@
 #define MPERF 0xE7
 #define PERF_CTL 0x199
 #define PERF_STAT 0x198
-#define TURBO_LIMIT 0x1AD
+#define TURBO_LIMIT0 0x1AD
+#define TURBO_LIMIT1 0x1AE
+#define TURBO_LIMIT2 0x1AF
 #define FIXED_CTR0 0x309
 #define THERM_STAT 0x1B1
 #define THERM_INT 0x1B2
@@ -725,6 +727,7 @@ void *thread(void *threaddata)
 						uint64_t therm_stat = 0, therm_int = 0;
 						uint64_t core_therm = 0;
 						uint64_t pow_info = 0;
+						uint64_t ratio_limit1, ratio_limit2;
 #ifdef MCK
 						syscall(READ, TURBO_LIMIT, &turbo_ratio_limit);
 						syscall(READ, THERM_STAT, &therm_stat);
@@ -733,7 +736,9 @@ void *thread(void *threaddata)
 						syscall(READ, POWER_INFO, &pow_info);
 #endif
 #ifndef MCK
-						read_msr_by_coord(socket, affinity, 0, TURBO_LIMIT, &turbo_ratio_limit);
+						read_msr_by_coord(socket, affinity, 0, TURBO_LIMIT0, &turbo_ratio_limit);
+						read_msr_by_coord(socket, affinity, 0, TURBO_LIMIT1, &ratio_limit1);
+						read_msr_by_coord(socket, affinity, 0, TURBO_LIMIT2, &ratio_limit2);
 						read_msr_by_coord(socket, affinity, 0, THERM_STAT, &therm_stat);
 						read_msr_by_coord(socket, affinity, 0, THERM_INT, &therm_int);
 						read_msr_by_coord(socket, affinity, 0, THERM_CORE, &core_therm);
@@ -752,6 +757,25 @@ void *thread(void *threaddata)
 						printf("6 core limit: %f\n", (float) ((turbo_ratio_limit & 0xFF0000000000) >> 40));
 						printf("7 core limit: %f\n", (float) ((turbo_ratio_limit & 0xFF000000000000) >> 48));
 						printf("8 core limit: %f\n", (float) ((turbo_ratio_limit & 0xFF00000000000000) >> 56));
+
+						printf("9 core limit: %f\n", (float) (ratio_limit1 & 0xFF));
+						printf("10 core limit: %f\n", (float) ((ratio_limit1 & 0xFF00) >> 8));
+						printf("11 core limit: %f\n", (float) ((ratio_limit1 & 0xFF0000) >> 16));
+						printf("12 core limit: %f\n", (float) ((ratio_limit1 & 0xFF000000) >> 24));
+						printf("13 core limit: %f\n", (float) ((ratio_limit1 & 0xFF00000000) >> 32));
+						printf("14 core limit: %f\n", (float) ((ratio_limit1 & 0xFF0000000000) >> 40));
+						printf("15 core limit: %f\n", (float) ((ratio_limit1 & 0xFF000000000000) >> 48));
+						printf("16 core limit: %f\n", (float) ((ratio_limit1 & 0xFF00000000000000) >> 56));
+
+						printf("17 core limit: %f\n", (float) (ratio_limit2 & 0xFF));
+						printf("18 core limit: %f\n", (float) ((ratio_limit2 & 0xFF00) >> 8));
+						printf("19 core limit: %f\n", (float) ((ratio_limit2 & 0xFF0000) >> 16));
+						printf("20 core limit: %f\n", (float) ((ratio_limit2 & 0xFF000000) >> 24));
+						printf("21 core limit: %f\n", (float) ((ratio_limit2 & 0xFF00000000) >> 32));
+						printf("22 core limit: %f\n", (float) ((ratio_limit2 & 0xFF0000000000) >> 40));
+						printf("23 core limit: %f\n", (float) ((ratio_limit2 & 0xFF000000000000) >> 48));
+						printf("24 core limit: %f\n", (float) ((ratio_limit2 & 0xFF00000000000000) >> 56));
+
 						printf("TEMPERATURE: %lu\n", ((therm_int >> 8) & 0x3F) - ((therm_stat >> 22) & 0x3F));
 						printf("CRIT TEMP: %lu\n", ((therm_int >> 8) & 0x3F));
 						printf("CORE THERM 0: %lu\n", core_therm & 0x1);
