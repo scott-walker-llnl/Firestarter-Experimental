@@ -487,7 +487,7 @@ void *thread(void *threaddata)
 							last = enr;
 							psamp_b = psamp_a;
 						}
-						if (!(((threaddata_t *) threaddata)->iter % 18000))
+						if (!(((threaddata_t *) threaddata)->iter % (duty / 4)))
 						{
 							if (state == 0)
 							{
