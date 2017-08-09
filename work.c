@@ -21,7 +21,7 @@
 
 #define MCK 1
 #define NUM_FS_WORKLOADS 6
-#define NUM_SLEEP_WORKLOADS 2
+#define NUM_SLEEP_WORKLOADS 1
 
 #define _GNU_SOURCE
 
@@ -500,6 +500,7 @@ void *thread(void *threaddata)
 							__asm__ __volatile__("rdtsc" : "=a" (low), "=d" (high));
 							//usleep(220);
 							res = intload();
+							workload = 0;
 #ifdef MCK
 							syscall(READ, PERF_STAT, &perfstat);
 							syscall(READ, APERF, &aperf_a);
@@ -808,7 +809,7 @@ int intload()
 {
 	int a, b, c;
 	unsigned itr;
-	for (itr = 0; itr < 550000; itr++)
+	for (itr = 0; itr < 5000000000U; itr++)
 	{
 		__asm__ __volatile__(
 			"addq %%rdx, %%rax\n\t"
