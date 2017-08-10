@@ -398,7 +398,7 @@ void *thread(void *threaddata)
 						seconds = (uint64_t) (timeval_y | (timeval_x << 5));
 						uint64_t rapl = power | (seconds << 17);
 						uint64_t urapl = upower | (usec << 17);
-						urapl |= (1LL << 15) | (1LL << 16);
+						//urapl |= (1LL << 15) | (1LL << 16);
 						urapl <<= 32;
 						rapl |= urapl;
 
@@ -411,7 +411,7 @@ void *thread(void *threaddata)
 							fprintf(stderr, "ERROR: seconds\n");
 						}
 
-						rapl |= (1LL << 15) | (1LL << 16);
+						//rapl |= (1LL << 15) | (1LL << 16);
 						fprintf(stderr, "RAPL is: %lx\n", rapl);
 #ifdef MCK
 						syscall(WRITE, POWER_LIMIT, &rapl);
