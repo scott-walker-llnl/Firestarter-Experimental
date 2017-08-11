@@ -295,7 +295,7 @@ void *thread(void *threaddata)
 					uint64_t energy, energy_a, pp0, pp0_a;
 					uint64_t aperf, aperf_a, mperf, mperf_a, perf;
 					uint64_t mperf_tot, aperf_tot, mperf_tot_a, aperf_tot_a;
-					struct timeval before;
+					struct timeval before_time;
 					unsigned affinity = ((threaddata_t *) threaddata)->cpu_id;
 					uint64_t unit = 0;
 					uint64_t turbo_ratio_limit = 0;
@@ -312,6 +312,7 @@ void *thread(void *threaddata)
 					energy_unit = 1.0 / (0x1 << ((unit & 0x1F00) >> 8));
 
 					//struct timeval profa, profb;
+					gettimeofday(&before_time, NULL);
 					if (affinity == 0)
 					{
 						//gettimeofday(&profb, NULL);
@@ -340,7 +341,6 @@ void *thread(void *threaddata)
 								0x100000000UL;
 						}
 
-						gettimeofday(&before, NULL);
 #ifdef MCK
 						syscall(WRITE, PERF_CTL, &perf);
 						syscall(READ, ENERGY_STATUS, &energy);
@@ -398,7 +398,7 @@ void *thread(void *threaddata)
 						seconds = (uint64_t) (timeval_y | (timeval_x << 5));
 						uint64_t rapl = power | (seconds << 17);
 						uint64_t urapl = upower | (usec << 17);
-						//urapl |= (1LL << 15) | (1LL << 16);
+						urapl |= (0LL << 15) | (0LL << 16);
 						urapl <<= 32;
 						rapl |= urapl;
 
@@ -411,7 +411,7 @@ void *thread(void *threaddata)
 							fprintf(stderr, "ERROR: seconds\n");
 						}
 
-						//rapl |= (1LL << 15) | (1LL << 16);
+						rapl |= (0LL << 15) | (0LL << 16);
 						fprintf(stderr, "RAPL is: %lx\n", rapl);
 #ifdef MCK
 						syscall(WRITE, POWER_LIMIT, &rapl);
@@ -672,10 +672,11 @@ void *thread(void *threaddata)
 					printf("finished workload");
 					fflush(stdout);
 					unsigned long delta_joules, delta_pp0;
-					struct timeval after;
+					struct timeval after_time;
+					gettimeofday(&after_time, NULL);
+					double time = (after_time.tv_sec - before_time.tv_sec) + (after_time.tv_usec - before_time.tv_usec) / 1000000.0;
 					if (affinity == 0)
 					{ 
-						gettimeofday(&after, NULL);
 						printf("energy unit is: %lf\n", energy_unit);
 #ifdef MCK
 						syscall(READ, ENERGY_STATUS, &energy_a);
@@ -719,7 +720,6 @@ void *thread(void *threaddata)
 						read_msr_by_coord(0, affinity, thread, THERM_INT, &therm_int);
 						read_msr_by_coord(0, affinity, thread, THERM_CORE, &core_therm);
 #endif
-						double time = (after.tv_sec - before.tv_sec) + (after.tv_usec - before.tv_usec) / 1000000.0;
 						printf("TIME: %lf\n", time);
 						printf("POWER: %lf\n", delta_joules * energy_unit / time);
 						printf("PP0: %lf\n", delta_pp0 * energy_unit / time);
@@ -747,6 +747,7 @@ void *thread(void *threaddata)
 						printf("CORE TEMP: %lu\n", (core_therm >> 16) & 0x3F);
 					}
 					printf("writing data\n");
+					printf("thread %u time: %lf\n", affinity, time);
 					fflush(stdout);
 					char fname[64];
 					snprintf(fname, 64, "core%d.msrdat", affinity);
