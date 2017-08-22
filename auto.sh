@@ -1,13 +1,13 @@
-EXP="exp49"
+EXP="merlot-test1"
 NITER=200000
 TURBO="t"
-PSTATE="0x2d00"
+PSTATE="0x1a00"
 DUTY=100000
 PART=4
-MAXFREQ="4.2"
+MAXFREQ="2.6"
 
 START=1
-END=3
+END=1
 LPOW=60
 LSEC=8
 SEC=25
@@ -21,7 +21,7 @@ CTR=1
 		echo -e "$NITER\n$LSEC\n$LPOW.0\n$SEC\n$POW.0\n$PSTATE\n$TURBO\n$DUTY\n$PART\n$MAXFREQ" > fsconfig
 		#DPATH="data/$EXP/$LPOW/$LSEC/$POW/$SEC/$PART/$DUTY"
 		DPATH="data/$EXP/$CTR/"
-		install/bin/mcexec ~/FIRESTARTER/FIRESTARTER --function 2 -q 1> pow
+		./FIRESTARTER --function 10 -q 1> pow
 		./check.sh 1> out
 		mkdir -p $DPATH
 		mv *.msrdat $DPATH
