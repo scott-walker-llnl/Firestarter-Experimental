@@ -28,7 +28,9 @@ LINUX_CC=gcc
 LINUX_C_FLAGS=-fomit-frame-pointer -Wall -std=c99 -I. -DAFFINITY
 OPT_STD=-O2
 OPT_ASM=-O0
-LINUX_L_FLAGS=-lpthread -lrt -lm -L/home/walker8/libmsr/install/lib -lmsr
+LINUX_L_FLAGS=-lpthread -lrt -lm
+LIBMSR_BIN=/home/walker8/lib/lib
+LIBMSR_INCLUDE=/home/walker8/lib/include
 
 # source and object files of assembler routines
 ASM_FUNCTION_SRC_FILES=sse2_functions.c avx_functions.c fma_functions.c fma4_functions.c avx512_functions.c 
@@ -59,7 +61,7 @@ win64: FIRESTARTER_win64.exe
 all: linux cuda win64
 
 FIRESTARTER: generic.o x86.o main.o init_functions.o work.o x86.o watchdog.o help.o ${ASM_FUNCTION_OBJ_FILES}
-	${LINUX_CC} -o FIRESTARTER  generic.o  main.o  init_functions.o work.o x86.o watchdog.o help.o ${ASM_FUNCTION_OBJ_FILES} ${LINUX_L_FLAGS} 
+	${LINUX_CC} -o FIRESTARTER  generic.o  main.o  init_functions.o work.o x86.o watchdog.o help.o ${ASM_FUNCTION_OBJ_FILES} ${LINUX_L_FLAGS} -L${LIBMSR_BIN} -lmsr
 
 FIRESTARTER_CUDA: generic.o  x86.o work.o init_functions.o x86.o watchdog.o gpu.o main_cuda.o help_cuda.o ${ASM_FUNCTION_OBJ_FILES}
 	${LINUX_CC} -o FIRESTARTER_CUDA generic.o main_cuda.o init_functions.o work.o x86.o watchdog.o help_cuda.o ${ASM_FUNCTION_OBJ_FILES} gpu.o ${LINUX_CUDA_L_FLAGS}
@@ -74,13 +76,13 @@ x86.o: x86.c cpu.h
 	${LINUX_CC} ${OPT_STD} ${LINUX_C_FLAGS} -c x86.c
 
 main.o: main.c work.h cpu.h
-	${LINUX_CC} ${OPT_STD} ${LINUX_C_FLAGS} -c main.c -L/home/walker8/libmsr/install/lib -lmsr -I/home/walker8/libmsr/install/include
+	${LINUX_CC} ${OPT_STD} ${LINUX_C_FLAGS} -c main.c -L${LIBMSR_BIN} -lmsr -I${LIBMSR_INCLUDE}
 
 init_functions.o: init_functions.c work.h cpu.h
 	${LINUX_CC} ${OPT_STD} ${LINUX_C_FLAGS} -c init_functions.c
 
 work.o: work.c work.h cpu.h
-	${LINUX_CC} ${OPT_STD} ${LINUX_C_FLAGS} -c work.c -L/home/walker8/libmsr/install/lib -lmsr -I/home/walker8/libmsr/install/include
+	${LINUX_CC} ${OPT_STD} ${LINUX_C_FLAGS} -c work.c -L${LIBMSR_BIN} -lmsr -I${LIBMSR_INCLUDE}
 
 watchdog.o: watchdog.h
 	${LINUX_CC} ${OPT_STD} ${LINUX_C_FLAGS} -c watchdog.c -lrt -lm

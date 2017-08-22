@@ -852,7 +852,7 @@ int intload()
 {
 	int a, b, c;
 	unsigned itr;
-	for (itr = 0; itr < 550000; itr++)
+	for (itr = 0; itr < 100000; itr++)
 	{
 		__asm__ __volatile__(
 			"addq %%rdx, %%rax\n\t"
