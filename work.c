@@ -20,8 +20,8 @@
  *****************************************************************************/
 
 #define MCK 1
-#define NUM_FS_WORKLOADS 6
-#define NUM_SLEEP_WORKLOADS 2
+//#define NUM_FS_WORKLOADS 6
+//#define NUM_SLEEP_WORKLOADS 2
 
 #define _GNU_SOURCE
 
@@ -250,6 +250,8 @@ void *thread(void *threaddata)
                      * watchdog also alters mydata->addrHigh to switch between high and low load function
                      */
 					FILE *config = fopen("fsconfig", "r");
+					unsigned long NUM_FS_WORKLOADS = 0;
+					unsigned long NUM_SLEEP_WORKLOADS = 0;
 					unsigned long iteration_cap = (unsigned long) NUM_ITERS;
 					unsigned sec = SECONDS, usec = 50;
 					double watts = WATTS, uwatts = 120;
@@ -274,6 +276,8 @@ void *thread(void *threaddata)
 						fscanf(config, "%u\n", &duty);	
 						fscanf(config, "%u\n", &partitions);	
 						fscanf(config, "%lf", &maxfreq);
+						fscanf(config, "%lu", &NUM_FS_WORKLOADS);
+						fscanf(config, "%lu", &NUM_SLEEP_WORKLOADS);
 						freq &= 0xFFFFUL;
 						fprintf(stderr, "Using Config: %lu, %u, %lf, %u, %lf, %lx, %c, %u, %u, %lf\n",
 						iteration_cap, sec, watts, usec, uwatts, freq, turbo, duty, partitions, maxfreq);
@@ -396,8 +400,8 @@ void *thread(void *threaddata)
 						}
 						// store the bits in the Intel specified format
 						seconds = (uint64_t) (timeval_y | (timeval_x << 5));
-						uint64_t rapl = power | (seconds << 17);
-						uint64_t urapl = upower | (usec << 17);
+						uint64_t rapl = 0x0 | power | (seconds << 17);
+						uint64_t urapl = 0x0 | upower | (usec << 17);
 						urapl |= (1LL << 15) | (1LL << 16);
 						urapl <<= 32;
 						rapl |= urapl;
