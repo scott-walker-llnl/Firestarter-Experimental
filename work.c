@@ -19,7 +19,7 @@
  * Contact: daniel.hackenberg@tu-dresden.de
  *****************************************************************************/
 
-#define MCK 1
+//#define MCK 1
 //#define NUM_FS_WORKLOADS 6
 //#define NUM_SLEEP_WORKLOADS 2
 
@@ -301,6 +301,7 @@ void *thread(void *threaddata)
 					uint64_t mperf_tot, aperf_tot, mperf_tot_a, aperf_tot_a;
 					struct timeval before_time;
 					unsigned affinity = ((threaddata_t *) threaddata)->cpu_id;
+					unsigned msr_thread = 0;
 					uint64_t unit = 0;
 					uint64_t turbo_ratio_limit = 0;
 					double energy_unit = 0.0;
@@ -310,8 +311,8 @@ void *thread(void *threaddata)
 					syscall(WRITE, FIXED_CTR_CTRL, &ctrl);
 #endif
 #ifndef MCK
-					read_msr_by_coord(0, affinity, thread, ENERGY_UNIT, &unit);
-					write_msr_by_coord(0, affinity, thread, FIXED_CTR_CTRL, ctrl);
+					read_msr_by_coord(0, affinity, msr_thread, ENERGY_UNIT, &unit);
+					write_msr_by_coord(0, affinity, msr_thread, FIXED_CTR_CTRL, ctrl);
 #endif
 					energy_unit = 1.0 / (0x1 << ((unit & 0x1F00) >> 8));
 
@@ -325,7 +326,7 @@ void *thread(void *threaddata)
 						syscall(READ, PERF_CTL, &old_perf);
 #endif
 #ifndef MCK
-						read_msr_by_coord(0, affinity, thread, PERF_CTL, &old_perf);
+						read_msr_by_coord(0, affinity, msr_thread, PERF_CTL, &old_perf);
 #endif
 						//disable turbo
 						//perf = perf | 0x100000000UL;
@@ -353,11 +354,11 @@ void *thread(void *threaddata)
 						syscall(READ, MPERF, &mperf_tot);
 #endif
 #ifndef MCK
-						write_msr_by_coord(0, affinity, thread, PERF_CTL, perf);
-						read_msr_by_coord(0, affinity, thread, ENERGY_STATUS, &energy);
-						read_msr_by_coord(0, affinity, thread, ENERGY_PP0, &pp0);
-						read_msr_by_coord(0, affnity, thread, APERF, &aperf_tot);
-						read_msr_by_coord(0, affnity, thread, MPERF, &mperf_tot);
+						write_msr_by_coord(0, affinity, msr_thread, PERF_CTL, perf);
+						read_msr_by_coord(0, affinity, msr_thread, ENERGY_STATUS, &energy);
+						read_msr_by_coord(0, affinity, msr_thread, ENERGY_PP0, &pp0);
+						read_msr_by_coord(0, affinity, msr_thread, APERF, &aperf_tot);
+						read_msr_by_coord(0, affinity, msr_thread, MPERF, &mperf_tot);
 #endif
 						uint64_t power_unit = unit & 0xF;
 						double pu = 1.0 / (0x1 << power_unit);
@@ -402,7 +403,7 @@ void *thread(void *threaddata)
 						seconds = (uint64_t) (timeval_y | (timeval_x << 5));
 						uint64_t rapl = 0x0 | power | (seconds << 17);
 						uint64_t urapl = 0x0 | upower | (usec << 17);
-						urapl |= (1LL << 15) | (1LL << 16);
+						urapl |= (0LL << 15) | (0LL << 16);
 						urapl <<= 32;
 						rapl |= urapl;
 
@@ -415,13 +416,13 @@ void *thread(void *threaddata)
 							fprintf(stderr, "ERROR: seconds\n");
 						}
 
-						rapl |= (1LL << 15) | (1LL << 16);
+						rapl |= (0LL << 15) | (0LL << 16);
 						fprintf(stderr, "RAPL is: %lx\n", rapl);
 #ifdef MCK
 						syscall(WRITE, POWER_LIMIT, &rapl);
 #endif
 #ifndef MCK
-						write_msr_by_coord(0, affinity, thread, POWER_LIMIT, &rapl);
+						write_msr_by_coord(0, affinity, msr_thread, POWER_LIMIT, &rapl);
 #endif
 					}
 					else
@@ -441,7 +442,7 @@ void *thread(void *threaddata)
 					syscall(READ, ENERGY_STATUS, &last);
 #endif
 #ifndef MCK
-					read_msr_by_coord(0, affinity, thread, ENERGY_STATUS, &last);
+					read_msr_by_coord(0, affinity, msr_thread, ENERGY_STATUS, &last);
 #endif
 
 					gettimeofday(&psamp_b, NULL);
@@ -461,7 +462,7 @@ void *thread(void *threaddata)
 							syscall(READ, ENERGY_STATUS, &enr);
 #endif
 #ifndef MCK
-							read_msr_by_coord(0, affinity, thread, ENERGY_STATUS, &enr);
+							read_msr_by_coord(0, affinity, msr_thread, ENERGY_STATUS, &enr);
 #endif
 							gettimeofday(&psamp_a, NULL);
 							double t = (psamp_a.tv_sec - psamp_b.tv_sec) + (psamp_a.tv_usec - psamp_b.tv_usec) / 1000000.0;
@@ -497,9 +498,9 @@ void *thread(void *threaddata)
 							syscall(READ, MPERF, &mperf);
 #endif
 #ifndef MCK
-							read_msr_by_coord(0, affinity, thread, FIXED_CTR0, &inst_ret);
-							read_msr_by_coord(0, affinity, thread, APERF, &aperf);
-							read_msr_by_coord(0, affinity, thread, MPERF, &mperf);
+							read_msr_by_coord(0, affinity, msr_thread, FIXED_CTR0, &inst_ret);
+							read_msr_by_coord(0, affinity, msr_thread, APERF, &aperf);
+							read_msr_by_coord(0, affinity, msr_thread, MPERF, &mperf);
 #endif
 							__asm__ __volatile__("rdtsc" : "=a" (low), "=d" (high));
 							//usleep(220);
@@ -511,10 +512,10 @@ void *thread(void *threaddata)
 							syscall(READ, FIXED_CTR0, &inst_ret_a);
 #endif
 #ifndef MCK
-							read_msr_by_coord(0, affinity, thread, PERF_STAT, &perfstat);
-							read_msr_by_coord(0, affinity, thread, APERF, &aperf_a);
-							read_msr_by_coord(0, affinity, thread, MPERF, &mperf_a);
-							read_msr_by_coord(0, affinity, thread, FIXED_CTR0, &inst_ret_a);
+							read_msr_by_coord(0, affinity, msr_thread, PERF_STAT, &perfstat);
+							read_msr_by_coord(0, affinity, msr_thread, APERF, &aperf_a);
+							read_msr_by_coord(0, affinity, msr_thread, MPERF, &mperf_a);
+							read_msr_by_coord(0, affinity, msr_thread, FIXED_CTR0, &inst_ret_a);
 #endif
 							__asm__ __volatile__("rdtsc" : "=a" (low_a), "=d" (high_a));
 							
@@ -546,9 +547,9 @@ void *thread(void *threaddata)
 						syscall(READ, MPERF, &mperf);
 #endif
 #ifndef MCK
-						read_msr_by_coord(0, affinity, thread, FIXED_CTR0, &inst_ret);
-						read_msr_by_coord(0, affinity, thread, APERF, &aperf);
-						read_msr_by_coord(0, affinity, thread, MPERF, &mperf);
+						read_msr_by_coord(0, affinity, msr_thread, FIXED_CTR0, &inst_ret);
+						read_msr_by_coord(0, affinity, msr_thread, APERF, &aperf);
+						read_msr_by_coord(0, affinity, msr_thread, MPERF, &mperf);
 #endif
 						__asm__ __volatile__("rdtsc" : "=a" (low), "=d" (high));
 						res = 0x12345;
@@ -613,10 +614,10 @@ void *thread(void *threaddata)
 						syscall(READ, FIXED_CTR0, &inst_ret_a);
 #endif
 #ifndef MCK
-						read_msr_by_coord(0, affinity, thread, PERF_STAT, &perfstat);
-						read_msr_by_coord(0, affinity, thread, APERF, &aperf_a);
-						read_msr_by_coord(0, affinity, thread, MPERF, &mperf_a);
-						read_msr_by_coord(0, affinity, thread, FIXED_CTR0, &inst_ret_a);
+						read_msr_by_coord(0, affinity, msr_thread, PERF_STAT, &perfstat);
+						read_msr_by_coord(0, affinity, msr_thread, APERF, &aperf_a);
+						read_msr_by_coord(0, affinity, msr_thread, MPERF, &mperf_a);
+						read_msr_by_coord(0, affinity, msr_thread, FIXED_CTR0, &inst_ret_a);
 #endif
 						__asm__ __volatile__("rdtsc" : "=a" (low_a), "=d" (high_a));
 						((threaddata_t *) threaddata)->msrdata[((threaddata_t *) threaddata)->iter - 1].pmc0 = perfstat & 0xFFFF;
@@ -689,10 +690,10 @@ void *thread(void *threaddata)
 						syscall(READ, MPERF, &mperf_tot_a);
 #endif
 #ifndef MCK
-						read_msr_by_coord(0, affinity, thread, ENERGY_STATUS, &energy_a);
-						read_msr_by_coord(0, affinity, thread, ENERGY_PP0, &pp0_a);
-						read_msr_by_coord(0, affinity, thread, APERF, &aperf_tot_a);
-						read_msr_by_coord(0, affinity, thread, MPERF, &mperf_tot_a);
+						read_msr_by_coord(0, affinity, msr_thread, ENERGY_STATUS, &energy_a);
+						read_msr_by_coord(0, affinity, msr_thread, ENERGY_PP0, &pp0_a);
+						read_msr_by_coord(0, affinity, msr_thread, APERF, &aperf_tot_a);
+						read_msr_by_coord(0, affinity, msr_thread, MPERF, &mperf_tot_a);
 #endif
 						if (energy_a - energy < 0)
 						{
@@ -719,10 +720,10 @@ void *thread(void *threaddata)
 						syscall(READ, THERM_CORE, &core_therm);
 #endif
 #ifndef MCK
-						read_msr_by_coord(0, affinity, thread, TURBO_LIMIT, &turbo_ratio_limit);
-						read_msr_by_coord(0, affinity, thread, THERM_STAT, &therm_stat);
-						read_msr_by_coord(0, affinity, thread, THERM_INT, &therm_int);
-						read_msr_by_coord(0, affinity, thread, THERM_CORE, &core_therm);
+						read_msr_by_coord(0, affinity, msr_thread, TURBO_LIMIT, &turbo_ratio_limit);
+						read_msr_by_coord(0, affinity, msr_thread, THERM_STAT, &therm_stat);
+						read_msr_by_coord(0, affinity, msr_thread, THERM_INT, &therm_int);
+						read_msr_by_coord(0, affinity, msr_thread, THERM_CORE, &core_therm);
 #endif
 						printf("TIME: %lf\n", time);
 						printf("POWER: %lf\n", delta_joules * energy_unit / time);
@@ -813,7 +814,7 @@ int intload()
 {
 	int a, b, c;
 	unsigned itr;
-	for (itr = 0; itr < 100000; itr++)
+	for (itr = 0; itr < 500000; itr++)
 	{
 		__asm__ __volatile__(
 			"addq %%rdx, %%rax\n\t"

@@ -20,7 +20,7 @@
  *****************************************************************************/
 
 #include "work.h"
-#define MCK 1
+//#define MCK 1
 
 #ifndef MCK
 #include "msr_core.h"
