@@ -18,7 +18,7 @@
  *
  * Contact: daniel.hackenberg@tu-dresden.de
  *****************************************************************************/
-#define MCK 1
+//#define MCK 1
 
 #include "work.h"
 
@@ -3978,10 +3978,12 @@ int asm_work_hsw_corei_fma_1t(threaddata_t* threaddata)
         "movq %%mm0, %%rax;" // restore iteration counter
 		"movabs $0, %%r13;"
 		"movq %%r13, %%mm0;"
+
         : "=a" (threaddata->iterations)
         : "a"(threaddata->addrMem), "b"(threaddata->addrHigh), "c" (threaddata->iterations)
         : "%r8", "%r9", "%r10", "%r11", "%r12", "%r13", "%r14", "%r15", "%rdi", "%rsi", "%rdx", "%mm0", "%mm1", "%mm2", "%mm3", "%mm4", "%mm5", "%mm6", "%mm7", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7", "%xmm8", "%xmm9", "%xmm10", "%xmm11", "%xmm12", "%xmm13", "%xmm14", "%xmm15"
         );
+	threaddata->iterations=0;
     return EXIT_SUCCESS;
 }
 /**
