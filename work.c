@@ -80,6 +80,54 @@ int BARRIER_GLOBAL = 0;
 
 int intload();
 
+void set_rapl(unsigned sec, double watts, double pu, double su)
+{
+	uint64_t power = (unsigned long) (watts / pu);
+	uint64_t seconds;
+	uint64_t timeval_y = 0, timeval_x = 0;
+	double logremainder = 0;
+
+	timeval_y = (uint64_t) log2(sec / su);
+	// store the mantissa of the log2
+	logremainder = (double) log2(sec / su) - (double) timeval_y;
+	timeval_x = 0;
+	// based on the mantissa, we can choose the appropriate multiplier
+	if (logremainder > 0.15 && logremainder <= 0.45)
+	{
+		timeval_x = 1;
+	}
+	else if (logremainder > 0.45 && logremainder <= 0.7)
+	{
+		timeval_x = 2;
+	}
+	else if (logremainder > 0.7)
+	{
+		timeval_x = 3;
+	}
+	// store the bits in the Intel specified format
+	seconds = (uint64_t) (timeval_y | (timeval_x << 5));
+	uint64_t rapl = 0x0 | power | (seconds << 17);
+
+	rapl |= (1LL << 15) | (1LL << 16);
+	#ifdef MCK
+	syscall(WRITE, POWER_LIMIT, &rapl);
+	#endif
+	#ifndef MCK
+	write_msr_by_coord(0, affinity, thread, POWER_LIMIT, &rapl);
+	#endif
+}
+
+void disable_rapl()
+{
+	uint64_t rapl = 0x0;
+	#ifdef MCK
+	syscall(WRITE, POWER_LIMIT, &rapl);
+	#endif
+	#ifndef MCK
+	write_msr_by_coord(0, 0, 0, POWER_LIMIT, &rapl);
+	#endif
+}
+
 void barrier(unsigned affinity, threaddata_t *threaddata)
 {
 	int sibling = -1;
@@ -317,6 +365,7 @@ void *thread(void *threaddata)
 
 					//struct timeval profa, profb;
 					gettimeofday(&before_time, NULL);
+					double pu, su;
 					if (affinity == 0)
 					{
 						//gettimeofday(&profb, NULL);
@@ -360,10 +409,10 @@ void *thread(void *threaddata)
 						read_msr_by_coord(0, affnity, thread, MPERF, &mperf_tot);
 #endif
 						uint64_t power_unit = unit & 0xF;
-						double pu = 1.0 / (0x1 << power_unit);
+						pu = 1.0 / (0x1 << power_unit);
 						fprintf(stderr, "power unit: %lx\n", power_unit);
 						uint64_t seconds_unit = (unit >> 16) & 0x1F;
-						double su = 1.0 / (0x1 << seconds_unit);
+						su = 1.0 / (0x1 << seconds_unit);
 						fprintf(stderr, "seconds unit: %lx\n", seconds_unit);
 						uint64_t power = (unsigned long) (watts / pu);
 						uint64_t upower = (unsigned long) (uwatts / pu);
@@ -400,11 +449,14 @@ void *thread(void *threaddata)
 						}
 						// store the bits in the Intel specified format
 						seconds = (uint64_t) (timeval_y | (timeval_x << 5));
+						fprintf(stderr, "timeval_x is %lx, seconds is %lx\n", timeval_x, seconds);
 						uint64_t rapl = 0x0 | power | (seconds << 17);
+						fprintf(stderr, "TEMP rapl is %lx\n", rapl);
 						uint64_t urapl = 0x0 | upower | (usec << 17);
-						urapl |= (1LL << 15) | (1LL << 16);
+						urapl |= (0LL << 15) | (0LL << 16);
 						urapl <<= 32;
 						rapl |= urapl;
+						fprintf(stderr, "TEMP rapl is %lx\n", rapl);
 
 						if (power & 0xFFFFFFFFFFFF8000)
 						{
@@ -415,7 +467,7 @@ void *thread(void *threaddata)
 							fprintf(stderr, "ERROR: seconds\n");
 						}
 
-						rapl |= (1LL << 15) | (1LL << 16);
+						rapl |= (0LL << 15) | (0LL << 16);
 						fprintf(stderr, "RAPL is: %lx\n", rapl);
 #ifdef MCK
 						syscall(WRITE, POWER_LIMIT, &rapl);
@@ -423,6 +475,7 @@ void *thread(void *threaddata)
 #ifndef MCK
 						write_msr_by_coord(0, affinity, thread, POWER_LIMIT, &rapl);
 #endif
+						disable_rapl();
 					}
 					else
 					{
@@ -452,10 +505,14 @@ void *thread(void *threaddata)
 					for (num_iters = 0; num_iters < iteration_cap; num_iters++) 
 					{
 						((threaddata_t *) threaddata)->iter++;
-						if (!(((threaddata_t *) threaddata)->iter % (duty / 4)))
+						if (!(((threaddata_t *) threaddata)->iter % (duty / 8)))
 						{
 							// barrier to keep threads in sync
 							barrier(affinity, ((threaddata_t *)threaddata));
+							//if (affinity == 0)
+							//{
+							//	set_rapl(((threaddata_t *) threaddata)->iter % 20, 83.0, pu, su);
+							//}
 							uint64_t enr;
 #ifdef MCK
 							syscall(READ, ENERGY_STATUS, &enr);
@@ -484,7 +541,7 @@ void *thread(void *threaddata)
 							{
 								workload = 1;
 							}
-							else
+							if (state >= NUM_FS_WORKLOADS + NUM_SLEEP_WORKLOADS)
 							{
 								state = 0;
 							}
@@ -785,6 +842,10 @@ void *thread(void *threaddata)
 					}
 					free(pow_dat);
 					fclose(out);
+					if (affinity == 0)
+					{
+						disable_rapl();
+					}
 					pthread_exit(NULL);
                 }
                 else{
@@ -813,7 +874,7 @@ int intload()
 {
 	int a, b, c;
 	unsigned itr;
-	for (itr = 0; itr < 100000; itr++)
+	for (itr = 0; itr < 550000; itr++)
 	{
 		__asm__ __volatile__(
 			"addq %%rdx, %%rax\n\t"
