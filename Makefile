@@ -28,7 +28,8 @@ LINUX_CC=gcc
 LINUX_C_FLAGS=-fomit-frame-pointer -Wall -std=c99 -I. -DAFFINITY
 OPT_STD=-O2
 OPT_ASM=-O0
-LINUX_L_FLAGS=-lpthread -lrt -lm -L/home/walker8/libmsr/install/lib -lmsr
+LINUX_L_FLAGS=-lpthread -lrt -lm -L/home/walker91/lib -lmsr
+LIBMSR_INCLUDE=/home/walker91/include
 
 # source and object files of assembler routines
 ASM_FUNCTION_SRC_FILES=sse2_functions.c avx_functions.c fma_functions.c fma4_functions.c avx512_functions.c 
@@ -122,13 +123,13 @@ fma4_functions_win64.o: fma4_functions.c
 	${WIN64_CC} ${OPT_ASM} ${WIN64_C_FLAGS} -mfma4 -mavx  -c fma4_functions.c -o fma4_functions_win64.o
 
 fma_functions.o: fma_functions.c
-	${LINUX_CC} ${OPT_ASM} ${LINUX_C_FLAGS} -mfma -mavx  -c fma_functions.c -I/home/walker8/libmsr/install/include 
+	${LINUX_CC} ${OPT_ASM} ${LINUX_C_FLAGS} -mfma -mavx  -c fma_functions.c -I ${LIBMSR_INCLUDE}
 
 fma_functions_win64.o: fma_functions.c
 	${WIN64_CC} ${OPT_ASM} ${WIN64_C_FLAGS} -mfma -mavx  -c fma_functions.c -o fma_functions_win64.o
 
 avx_functions.o: avx_functions.c
-	${LINUX_CC} ${OPT_ASM} ${LINUX_C_FLAGS} -mavx  -c avx_functions.c
+	${LINUX_CC} ${OPT_ASM} ${LINUX_C_FLAGS} -mavx  -c avx_functions.c -I ${LIBMSR_INCLUDE}
 
 avx_functions_win64.o: avx_functions.c
 	${WIN64_CC} ${OPT_ASM} ${WIN64_C_FLAGS} -mavx  -c avx_functions.c -o avx_functions_win64.o

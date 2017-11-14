@@ -95,6 +95,38 @@ void barrier(unsigned affinity, threaddata_t *threaddata)
 	}
 }
 
+void set_perf(unsigned freq, char turbo)
+{
+	uint64_t old_perf, perf;
+#ifdef MCK
+	syscall(READ, PERF_CTL, &old_perf);
+#endif
+#ifndef MCK
+	read_msr_by_coord(0, 0, 0, PERF_CTL, &old_perf);
+#endif
+	freq <<= 8;
+	if (turbo == 't')
+	{
+		perf = (old_perf & 
+			0xFFFFFFFEFFFF0000UL) |
+			(freq & 0xFFFFUL);
+	}
+	else
+	{
+		perf = (old_perf & 
+			0xFFFFFFFFFFFF0000UL) |
+			(freq & 0xFFFFUL) | 
+			0x100000000UL;
+	}
+
+#ifdef MCK
+	syscall(WRITE, PERF_CTL, &perf);
+#endif
+#ifndef MCK
+	write_msr_by_coord(0, 0, 0, PERF_CTL, perf);
+#endif
+}
+
 /*
  * low load function
  */
@@ -260,6 +292,7 @@ void *thread(void *threaddata)
 					unsigned duty = 8800;
 					unsigned partitions = 4;
 					char turbo = 't';
+					unsigned affinity = ((threaddata_t *) threaddata)->cpu_id;
 					if (config == NULL)
 					{
 							fprintf(stderr, "Error opening config file, using defaults\n");
@@ -279,8 +312,8 @@ void *thread(void *threaddata)
 						fscanf(config, "%lu", &NUM_FS_WORKLOADS);
 						fscanf(config, "%lu", &NUM_SLEEP_WORKLOADS);
 						freq &= 0xFFFFUL;
-						fprintf(stderr, "Using Config: %lu, %u, %lf, %u, %lf, %lx, %c, %u, %u, %lf\n",
-						iteration_cap, sec, watts, usec, uwatts, freq, turbo, duty, partitions, maxfreq);
+						fprintf(stderr, "Thread %d Using Config: %lu, %u, %lf, %u, %lf, %lx, %c, %u, %u, %lf\n",
+						affinity, iteration_cap, sec, watts, usec, uwatts, freq, turbo, duty, partitions, maxfreq);
 						fclose(config);
 					}
 					unsigned long num_iters = 0;
@@ -300,7 +333,6 @@ void *thread(void *threaddata)
 					uint64_t aperf, aperf_a, mperf, mperf_a, perf;
 					uint64_t mperf_tot, aperf_tot, mperf_tot_a, aperf_tot_a;
 					struct timeval before_time;
-					unsigned affinity = ((threaddata_t *) threaddata)->cpu_id;
 					unsigned msr_thread = 0;
 					uint64_t unit = 0;
 					uint64_t turbo_ratio_limit = 0;
@@ -337,6 +369,8 @@ void *thread(void *threaddata)
 							perf = (old_perf & 
 								0xFFFFFFFEFFFF0000UL) |
 								(freq & 0xFFFFUL);
+							perf = 0x2500ul;
+							fprintf(stderr, "writing %lx to perf\n", (unsigned long) perf);
 						}
 						else
 						{
@@ -344,6 +378,7 @@ void *thread(void *threaddata)
 								0xFFFFFFFFFFFF0000UL) |
 								(freq & 0xFFFFUL) | 
 								0x100000000UL;
+							fprintf(stderr, "writing %lx to perf\n", (unsigned long) perf);
 						}
 
 #ifdef MCK
@@ -359,70 +394,6 @@ void *thread(void *threaddata)
 						read_msr_by_coord(0, affinity, msr_thread, ENERGY_PP0, &pp0);
 						read_msr_by_coord(0, affinity, msr_thread, APERF, &aperf_tot);
 						read_msr_by_coord(0, affinity, msr_thread, MPERF, &mperf_tot);
-#endif
-						uint64_t power_unit = unit & 0xF;
-						double pu = 1.0 / (0x1 << power_unit);
-						fprintf(stderr, "power unit: %lx\n", power_unit);
-						uint64_t seconds_unit = (unit >> 16) & 0x1F;
-						double su = 1.0 / (0x1 << seconds_unit);
-						fprintf(stderr, "seconds unit: %lx\n", seconds_unit);
-						uint64_t power = (unsigned long) (watts / pu);
-						uint64_t upower = (unsigned long) (uwatts / pu);
-						uint64_t seconds;
-						uint64_t timeval_y = 0, timeval_x = 0;
-						double logremainder = 0;
-						if (sec > 40)
-						{
-							fprintf(stderr, "ERROR: seconds too high\n");
-							//sec = 40;
-						}
-						if (usec > 127)
-						{
-							fprintf(stderr, "ERROR: usec too high\n");
-							usec = 127;
-						}
-						timeval_y = (uint64_t) log2(sec / su);
-						fprintf(stderr, "time unit is %lf, field 1 is %lx\n", su, timeval_y);
-						// store the mantissa of the log2
-						logremainder = (double) log2(sec / su) - (double) timeval_y;
-						timeval_x = 0;
-						// based on the mantissa, we can choose the appropriate multiplier
-						if (logremainder > 0.15 && logremainder <= 0.45)
-						{
-								timeval_x = 1;
-						}
-						else if (logremainder > 0.45 && logremainder <= 0.7)
-						{
-								timeval_x = 2;
-						}
-						else if (logremainder > 0.7)
-						{
-								timeval_x = 3;
-						}
-						// store the bits in the Intel specified format
-						seconds = (uint64_t) (timeval_y | (timeval_x << 5));
-						uint64_t rapl = 0x0 | power | (seconds << 17);
-						uint64_t urapl = 0x0 | upower | (usec << 17);
-						urapl |= (0LL << 15) | (0LL << 16);
-						urapl <<= 32;
-						rapl |= urapl;
-
-						if (power & 0xFFFFFFFFFFFF8000)
-						{
-							fprintf(stderr, "ERROR: power\n");
-						}
-						if (seconds & 0xFFFFFFFFFFFFFF80)
-						{
-							fprintf(stderr, "ERROR: seconds\n");
-						}
-
-						rapl |= (0LL << 15) | (0LL << 16);
-						fprintf(stderr, "RAPL is: %lx\n", rapl);
-#ifdef MCK
-						syscall(WRITE, POWER_LIMIT, &rapl);
-#endif
-#ifndef MCK
-						write_msr_by_coord(0, affinity, msr_thread, POWER_LIMIT, &rapl);
 #endif
 					}
 					else

@@ -1,27 +1,29 @@
-EXP="merlot-test1"
-NITER=200000
+EXP="turbo1"
+NITER=100000
 TURBO="t"
-PSTATE="0x1a00"
-DUTY=100000
+PSTATE="0x2500"
+DUTY=10000
 PART=4
-MAXFREQ="2.6"
+MAXFREQ="3.5"
+NUMFS=3
+NUMSLEEP=1
 
 START=1
 END=1
-LPOW=60
-LSEC=8
+LPOW=150
+LSEC=2
 SEC=25
-POW=105
+POW=150
 CTR=1
 
 #for ((POW=60; POW <= 105; POW += 5));
 #do
 	for ((CTR=START; CTR<=END; CTR++));
 	do
-		echo -e "$NITER\n$LSEC\n$LPOW.0\n$SEC\n$POW.0\n$PSTATE\n$TURBO\n$DUTY\n$PART\n$MAXFREQ" > fsconfig
+		echo -e "$NITER\n$LSEC\n$LPOW.0\n$SEC\n$POW.0\n$PSTATE\n$TURBO\n$DUTY\n$PART\n$MAXFREQ\n$NUMFS\n$NUMSLEEP\n" > fsconfig
 		#DPATH="data/$EXP/$LPOW/$LSEC/$POW/$SEC/$PART/$DUTY"
-		DPATH="data/$EXP/$CTR/"
-		./FIRESTARTER --function 10 -q 1> pow
+		DPATH="data/$EXP/"
+		./FIRESTARTER --function 4 -q -b 0-5 1> pow
 		./check.sh 1> out
 		mkdir -p $DPATH
 		mv *.msrdat $DPATH
